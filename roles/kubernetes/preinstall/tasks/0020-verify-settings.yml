@@ -95,6 +95,7 @@
 - name: Stop if ip var does not match local ips
   assert:
     that: ip in ansible_all_ipv4_addresses
+    msg: "'{{ ansible_all_ipv4_addresses }}' do not contain '{{ ip }}'"
   when:
     - not ignore_assert_errors
     - ip is defined
@@ -152,13 +153,13 @@
 
 - name: Ensure minimum calico version
   assert:
-    that: calico_version is version('v3.0.0', '>=')
-    msg: "calico_version is too low. Minimum version v3.0.0"
+    that: calico_version is version(calico_min_version_required, '>=')
+    msg: "calico_version is too low. Minimum version {{ calico_min_version_required }}"
   run_once: yes
   when:
     - kube_network_plugin == 'calico'
 
-- name: "Get current version of calico cluster version"
+- name: Get current calico cluster version
   shell: "set -o pipefail && {{ bin_dir }}/calicoctl.sh version  | grep 'Cluster Version:' | awk '{ print $3}'"
   args:
     executable: /bin/bash
@@ -171,11 +172,11 @@
   when:
     - kube_network_plugin == 'calico'
 
-- name: "Check that calico version is enough for upgrade"
+- name: Check that current calico version is enough for upgrade
   assert:
     that:
-      - calico_version_on_server.stdout is version('v2.6.5', '>=')
-    msg: "Your version of calico is not fresh enough for upgrade. Minimum version v2.6.5"
+      - calico_version_on_server.stdout is version(calico_min_version_required, '>=')
+    msg: "Your version of calico is not fresh enough for upgrade. Minimum version {{ calico_min_version_required }}"
   when:
     - kube_network_plugin == 'calico'
     - 'calico_version_on_server.stdout is defined'
@@ -257,12 +258,6 @@
     msg: "resolvconf_mode can only be 'docker_dns', 'host_resolvconf' or 'none'"
   when: resolvconf_mode is defined
   run_once: true
-
-- name: Stop if kubeadm etcd mode is enabled but experimental control plane is not
-  assert:
-    that: kubeadm_control_plane
-    msg: "kubeadm etcd mode requires experimental control plane"
-  when: etcd_kubeadm_enabled
 
 - name: Stop if etcd deployment type is not host or docker
   assert:

@@ -15,7 +15,7 @@ is_fedora_coreos: false
 disable_swap: true
 
 ## Change this to use another Kubernetes version, e.g. a current beta release
-kube_version: v1.19.1
+kube_version: v1.19.2
 
 ## The minimum version working
 kube_version_min_required: v1.17.0
@@ -26,14 +26,19 @@ kubeadm_use_hyperkube_image: False
 ## Kube Proxy mode One of ['iptables','ipvs']
 kube_proxy_mode: ipvs
 
-## Delete kube-proxy daemonset if kube_proxy_remove set, e.g. kube_network_plugin providing proxy services
-kube_proxy_remove: >-
-  {%- if kube_network_plugin == 'kube-router' -%}
-  {{ (kube_router_run_service_proxy is defined and kube_router_run_service_proxy)| bool }}
-  {%- elif kube_network_plugin == 'cilium' -%}
-  {{ (cilium_kube_proxy_replacement is defined and cilium_kube_proxy_replacement == 'strict')| bool }}
+## List of kubeadm init phases that should be skipped during control plane setup
+## By default 'addon/coredns' is skipped
+## 'addon/kube-proxy' gets skipped for some network plugins
+kubeadm_init_phases_skip_default: [ "addon/coredns" ]
+kubeadm_init_phases_skip: >-
+  {%- if kube_network_plugin == 'kube-router' and (kube_router_run_service_proxy is defined and kube_router_run_service_proxy) -%}
+  {{ kubeadm_init_phases_skip_default }} + [ "addon/kube-proxy" ]
+  {%- elif kube_network_plugin == 'cilium' and (cilium_kube_proxy_replacement is defined and cilium_kube_proxy_replacement == 'strict') -%}
+  {{ kubeadm_init_phases_skip_default }} + [ "addon/kube-proxy" ]
+  {%- elif kube_proxy_remove is defined and kube_proxy_remove -%}
+  {{ kubeadm_init_phases_skip_default }} + [ "addon/kube-proxy" ]
   {%- else -%}
-  false
+  {{ kubeadm_init_phases_skip_default }}
   {%- endif -%}
 
 # A string slice of values which specify the addresses to use for NodePorts.
@@ -152,7 +157,7 @@ peer_with_calico_rr: "{{ 'calico-rr' in groups and groups['calico-rr']|length > 
 calico_upgrade_enabled: true
 
 # Choose data store type for calico: "etcd" or "kdd" (kubernetes datastore)
-calico_datastore: "etcd"
+calico_datastore: "kdd"
 
 # Kubernetes internal network for services, unused block of space.
 kube_service_addresses: 10.233.0.0/18
@@ -397,9 +402,6 @@ kubelet_protect_kernel_defaults: true
 ## the k8s cluster.
 kube_feature_gates: []
 
-# Enable kubeadm experimental control plane
-kubeadm_control_plane: false
-
 # Local volume provisioner storage classes
 # Levarages Ansibles string to Python datatype casting. Otherwise the dict_key isn't substituted
 # see https://github.com/ansible/ansible/issues/17324
@@ -424,7 +426,7 @@ contiv_peer_with_uplink_leaf: false
 contiv_global_as: "65002"
 contiv_global_neighbor_as: "500"
 
-ssl_ca_dirs: >-
+ssl_ca_dirs: |-
   [
   {% if ansible_os_family in ['Flatcar Container Linux by Kinvolk'] -%}
   '/usr/share/ca-certificates',
@@ -512,16 +514,6 @@ etcd_snapshot_count: "10000"
 
 certificates_key_size: 2048
 certificates_duration: 36500
-
-pip_extra_args: |-
-  {%- set pip_extra_args_list = [] -%}
-  {%- if pyrepo_index is defined -%}
-  {%- set DO = pip_extra_args_list.append('--index-url %s' | format(pyrepo_index)) -%}
-  {%- if pyrepo_cert is defined -%}
-  {%- set DO = pip_extra_args_list.append('--cert %s' | format(pyrepo_cert)) -%}
-  {%- endif -%}
-  {%- endif -%}
-  {{ pip_extra_args_list|join(' ') }}
 
 etcd_config_dir: /etc/ssl/etcd
 etcd_events_data_dir: "/var/lib/etcd-events"
